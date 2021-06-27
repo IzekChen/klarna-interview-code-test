@@ -1,0 +1,37 @@
+filebeat.inputs:
+- type: log
+  enabled: false
+  paths:
+    - /var/log/nginx
+
+filebeat.modules:
+- module: nginx
+  access:
+    var.paths: ["/var/log/nginx/access.log"]
+  error:
+    var.paths: ["/var/log/nginx/error.log"]
+  ingress_controller:
+    enabled: false
+
+filebeat.config:
+  modules:
+    path: ${path.config}/modules.d/*.yml
+    reload.enabled: false
+
+
+processors:
+- add_cloud_metadata:
+
+
+output.elasticsearch:
+  hosts: ['elasticsearch:9200']
+  protocol: "http"
+
+setup.kibana:
+  host: "kibana:5601"
+
+#================================ Logging =====================================
+
+# Sets log level. The default log level is info.
+# Available log levels are: error, warning, info, debug
+logging.level: info

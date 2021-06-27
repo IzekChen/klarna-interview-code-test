@@ -1,0 +1,117 @@
+version: '3.4'
+services:
+    web:
+        build: .
+        ports:
+            - "8080:8080"
+        environment: 
+            - FLASK_APP=server.py
+            - FLASK_ENV=production
+            - FLASK_RUN_PORT=8080
+            - FLASK_RUN_HOST=0.0.0.0
+        labels:
+            app: web
+        networks: 
+            - default
+
+    nginx:
+        image: nginx
+        container_name: nginx
+        volumes: 
+            - ./nginx-logs:/var/log/nginx
+            - ./config/nginx/nginx.conf:/etc/nginx/nginx.conf
+            #- ./config/nginx/default.conf:/etc/nginx/conf.d/default.conf
+        ports:
+            - "80:80"
+        restart: always
+        networks: 
+            - default
+
+    elasticsearch:
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.13.2
+        container_name: es01
+        environment:
+            - node.name=es01
+            - cluster.name=es-docker-cluster
+            - bootstrap.memory_lock=true
+            - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+            - discovery.type=single-node
+        ulimits:
+            memlock:
+                soft: -1
+                hard: -1
+        volumes:
+            - ./data01:/usr/share/elasticsearch/data
+        ports:
+            - 9200:9200
+        networks:
+            - default
+
+    kibana:
+        image: docker.elastic.co/kibana/kibana:7.13.2
+        container_name: kibana
+        ports:
+            - 5601:5601
+        environment:
+            ELASTICSEARCH_URL: http://es01:9200
+            ELASTICSEARCH_HOSTS: '["http://es01:9200"]'
+        networks:
+            - default
+
+
+    grafana:
+        image: grafana/grafana:7.5.8
+        ports:
+            - 3000:3000
+        user: "104"
+        volumes: 
+            #- grafana_data:/var/lib/grafana
+            - ./grafana-data:/var/lib/grafana
+        networks: 
+            - default
+    
+    heartbeat:
+        image: docker.elastic.co/beats/heartbeat:7.13.2
+        container_name: heartbeat
+        command: --strict.perms=false -e  # -e flag to log to stderr and disable syslog/file output
+        secrets:
+            - source: heartbeat.yml
+              target: /usr/share/heartbeat/heartbeat.yml
+        depends_on: 
+            - elasticsearch
+            - kibana
+        healthcheck:
+            test: heartbeat test config
+            interval: 30s
+            timeout: 15s
+            retries: 5
+        networks: 
+            - default
+
+    filebeat:
+        container_name: filebeat
+        image: docker.elastic.co/beats/filebeat:7.7.0
+        command:
+            - "-e"
+            - "--strict.perms=false"
+        restart: always
+        secrets:
+            - source: filebeat.yml
+              target: /usr/share/filebeat/filebeat.yml
+        volumes: 
+            - ./nginx-logs:/var/log/nginx
+        networks: 
+            - default
+
+volumes: 
+    data01:
+        driver: local
+    grafana_data:
+        driver: local
+    
+
+secrets:
+    heartbeat.yml:
+        file: ./config/heartbeat/heartbeat.yml
+    filebeat.yml:
+        file: ./config/filebeat/filebeat.yml
